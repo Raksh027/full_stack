@@ -1,0 +1,1 @@
+"""BoomBoom API application package."""

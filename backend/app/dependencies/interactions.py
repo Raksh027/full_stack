@@ -1,0 +1,68 @@
+from typing import Annotated
+
+from fastapi import Depends, Request
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.config import Settings, get_settings
+from app.core.rate_limit import RateLimiter
+from app.core.realtime import PresenceStore
+from app.dependencies.auth import get_db, get_limiter
+from app.services.chat import ChatService
+from app.services.interactions import InteractionService
+from app.services.notifications import NotificationService
+
+
+def get_interaction_service(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    limiter: Annotated[RateLimiter, Depends(get_limiter)],
+) -> InteractionService:
+    presence = getattr(request.app.state, "presence", None)
+    if presence is None and hasattr(request.app.state, "cache"):
+        presence = PresenceStore(request.app.state.cache)
+    notifier = NotificationService(
+        session=session,
+        settings=settings,
+        limiter=limiter,
+        request_id=getattr(request.state, "request_id", "-"),
+        jobs=getattr(request.app.state, "jobs", None),
+        presence=presence,
+        broker=getattr(request.app.state, "broker", None),
+    )
+    return InteractionService(
+        session=session,
+        settings=settings,
+        limiter=limiter,
+        request_id=getattr(request.state, "request_id", "-"),
+        notifier=notifier,
+    )
+
+
+def get_chat_service(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    limiter: Annotated[RateLimiter, Depends(get_limiter)],
+) -> ChatService:
+    presence = getattr(request.app.state, "presence", None)
+    if presence is None and hasattr(request.app.state, "cache"):
+        presence = PresenceStore(request.app.state.cache)
+    notifier = NotificationService(
+        session=session,
+        settings=settings,
+        limiter=limiter,
+        request_id=getattr(request.state, "request_id", "-"),
+        jobs=getattr(request.app.state, "jobs", None),
+        presence=presence,
+        broker=getattr(request.app.state, "broker", None),
+    )
+    return ChatService(
+        session=session,
+        settings=settings,
+        limiter=limiter,
+        request_id=getattr(request.state, "request_id", "-"),
+        broker=getattr(request.app.state, "broker", None),
+        presence=presence,
+        notifier=notifier,
+    )
