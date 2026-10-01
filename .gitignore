@@ -1,0 +1,3 @@
+# Firebase Admin SDK keys must stay on the host, never in git.
+**/boomboom-firebase-admin.json
+firebase setup/boomboom-firebase-admin.json

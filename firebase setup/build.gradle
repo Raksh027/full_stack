@@ -1,0 +1,147 @@
+plugins {
+    id "com.android.application"
+    id "org.jetbrains.kotlin.android"
+    id "dev.flutter.flutter-gradle-plugin"
+    id "com.google.gms.google-services"
+}
+
+System.setProperty("keystore.pkcs12.legacy", "true")
+
+def keystoreProperties = new Properties()
+def keystorePropertiesFile = rootProject.file("key.properties")
+if (keystorePropertiesFile.exists()) {
+    keystorePropertiesFile.withReader("UTF-8") { reader ->
+        keystoreProperties.load(reader)
+    }
+}
+
+def propValue = { name ->
+    def value = keystoreProperties[name]
+    if (value == null) {
+        return ""
+    }
+    def text = value.toString().trim()
+    if ((text.startsWith("\"") && text.endsWith("\"")) ||
+            (text.startsWith("'") && text.endsWith("'"))) {
+        text = text.substring(1, text.length() - 1).trim()
+    }
+    return text
+}
+
+def releaseKeyAlias = propValue("keyAlias")
+def releaseKeyPassword = propValue("keyPassword")
+def releaseStorePassword = propValue("storePassword")
+def releaseStoreFile = propValue("storeFile") ? rootProject.file(propValue("storeFile")) : null
+
+def detectStoreType = { file ->
+    if (file == null || !file.exists()) {
+        return "JKS"
+    }
+    def header = new byte[2]
+    file.withInputStream { stream -> stream.read(header) }
+    // PKCS#12 is an ASN.1 SEQUENCE (0x30). Java reports a wrong password if this is opened as JKS.
+    return (header[0] == 0x30) ? "PKCS12" : "JKS"
+}
+
+def releaseStoreType = detectStoreType(releaseStoreFile)
+
+def requireReleaseSigning = {
+    if (!keystorePropertiesFile.exists()) {
+        throw new GradleException(
+            "Release signing requires android/key.properties. Copy android/key.properties.example and fill it locally. See docs/ANDROID_SIGNING.md"
+        )
+    }
+    if (releaseStoreFile == null || !releaseStoreFile.exists()) {
+        throw new GradleException(
+            "Release signing requires the upload keystore at android/${propValue('storeFile') ?: 'upload-keystore.jks'}. The file is missing."
+        )
+    }
+    if (!releaseKeyAlias || !releaseKeyPassword || !releaseStorePassword) {
+        throw new GradleException(
+            "Release signing requires keyAlias, storePassword, and keyPassword in android/key.properties."
+        )
+    }
+}
+
+android {
+    namespace "com.boomboomapp.date"
+    compileSdk flutter.compileSdkVersion
+    ndkVersion flutter.ndkVersion
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    defaultConfig {
+        applicationId "com.boomboomapp.date"
+        minSdkVersion flutter.minSdkVersion
+        targetSdkVersion flutter.targetSdkVersion
+        versionCode flutter.versionCode
+        versionName flutter.versionName
+    }
+
+    signingConfigs {
+        release {
+            keyAlias releaseKeyAlias
+            keyPassword releaseKeyPassword
+            storeFile releaseStoreFile
+            storePassword releaseStorePassword
+            storeType releaseStoreType
+        }
+    }
+
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.debug
+        }
+        release {
+            signingConfig signingConfigs.release
+        }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+    }
+}
+
+gradle.taskGraph.whenReady { graph ->
+    def needsReleaseSigning = graph.allTasks.any { task ->
+        def name = task.name.toLowerCase()
+        name.contains("release") &&
+                (name.contains("bundle") ||
+                        name.contains("assemble") ||
+                        name.contains("package") ||
+                        name.contains("sign"))
+    }
+    if (needsReleaseSigning) {
+        requireReleaseSigning()
+        logger.lifecycle(
+            "Release signing: store=${releaseStoreFile.canonicalPath} alias=${releaseKeyAlias} type=${android.signingConfigs.release.storeType}"
+        )
+    }
+}
+
+flutter {
+    source '../..'
+}
+
+def flutterBundleOutput = rootProject.file("../build/app/outputs/bundle")
+tasks.configureEach { task ->
+    if (task.name == "bundleRelease") {
+        task.doLast {
+            def fromDir = file("${project.buildDir}/outputs/bundle/release")
+            def toDir = new File(flutterBundleOutput, "release")
+            if (fromDir.exists() && fromDir.canonicalPath != toDir.canonicalPath) {
+                toDir.mkdirs()
+                copy {
+                    from fromDir
+                    into toDir
+                    include "*.aab"
+                }
+            }
+        }
+    }
+}
