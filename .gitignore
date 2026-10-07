@@ -5,6 +5,10 @@ firebase setup/boomboom-firebase-admin.json
 # ─── Environment / secrets ────────────────────────────────────────────────────
 # Keep .env.example and .env.production.example in git (they have no real values).
 # All other .env files may contain real credentials — never commit them.
+.env
+.env.production
+.env.staging
+.env.local
 backend/.env
 backend/.env.production
 backend/.env.staging
@@ -19,9 +23,13 @@ boomboom/.env.local
 *.jks
 *.keystore
 !debug.keystore
+**/key.properties
+!**/key.properties.example
 
 # Firebase / Google Play service accounts
 **/firebase-admin.json
+**/*firebase-adminsdk*.json
+**/*-firebase-admin.json
 **/google-play-service-account.json
 **/GoogleService-Info.plist.bak
 

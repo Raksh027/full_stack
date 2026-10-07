@@ -3,14 +3,19 @@
 # HTTPS is handled by Caddy (auto-TLS via Let's Encrypt).
 # All secrets come from .env.production (never committed to git).
 #
-# First deploy:
+# First deploy (run from backend/):
 #   cp .env.production.example .env.production
-#   # Edit .env.production with real secrets
-#   docker compose -f docker-compose.prod.yml up -d --build
+#   # Edit .env.production on the VPS only. Never commit it.
+#   docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+#
+# --env-file is required. Compose interpolates ${POSTGRES_USER},
+# ${POSTGRES_PASSWORD}, and ${FIREBASE_CREDENTIALS_FILE} from that file.
+# The service env_file only injects variables into containers; it does not
+# interpolate this file.
 #
 # Rolling update:
 #   git pull
-#   docker compose -f docker-compose.prod.yml up -d --build api worker
+#   docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build api worker
 
 services:
   postgres:
