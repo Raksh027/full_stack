@@ -74,6 +74,14 @@ yarn-error.log
 !.yarn/sdks
 !.yarn/versions
 
-# Local env overrides
+# ─── Environment / secrets ────────────────────────────────────────────────────
+# .env.example is safe to track (no real values). Everything else must stay off git.
+.env
+.env.production
+.env.staging
 .env.local
 .env.*.local
+
+# Google Maps / Firebase / Play service-account keys must never be committed
+**/google-services.json.bak
+**/GoogleService-Info.plist.bak

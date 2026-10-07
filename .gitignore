@@ -1,3 +1,31 @@
 # Firebase Admin SDK keys must stay on the host, never in git.
 **/boomboom-firebase-admin.json
 firebase setup/boomboom-firebase-admin.json
+
+# ─── Environment / secrets ────────────────────────────────────────────────────
+# Keep .env.example and .env.production.example in git (they have no real values).
+# All other .env files may contain real credentials — never commit them.
+backend/.env
+backend/.env.production
+backend/.env.staging
+backend/.env.local
+
+boomboom/.env
+boomboom/.env.production
+boomboom/.env.staging
+boomboom/.env.local
+
+# Android signing keystore — never commit to git.
+*.jks
+*.keystore
+!debug.keystore
+
+# Firebase / Google Play service accounts
+**/firebase-admin.json
+**/google-play-service-account.json
+**/GoogleService-Info.plist.bak
+
+# Generic secret files
+*.p8
+*.p12
+*.pem

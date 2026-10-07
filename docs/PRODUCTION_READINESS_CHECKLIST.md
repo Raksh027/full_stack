@@ -1214,3 +1214,142 @@ STEP 5 — Deploy to Hostinger (15 min)
 ---
 
 *Document updated from direct code inspection + live Docker test results. All PASS claims cite actual commands/output.*
+
+---
+
+## 21 — Production Configuration Security Audit (2026-10-07)
+
+### 21.1 — Environment Variable Secret Inventory
+
+| File | Type of Secret | Safe? | Recommended Action |
+|------|---------------|-------|--------------------|
+| `backend/.env` (now untracked) | SMTP Gmail App Password | ❌ **UNSAFE — was in git history** | **Revoke immediately** in Google Account → App Passwords. Generate new one for Hostinger only. |
+| `backend/.env` (now untracked) | Firebase path (macOS dev machine) | ❌ UNSAFE for production | Use `/etc/boomboom/firebase-admin.json` on VPS. See §21.4 below. |
+| `backend/.env` (now untracked) | Google OAuth Client ID | ⚠️ Low-risk (public identifier) | Restrict to authorised domains in Google Cloud Console → Credentials |
+| `boomboom/.env` (now untracked) | Google Maps API Key | ❌ **UNSAFE — was in git history** | **Restrict key** in GCP → Credentials → Android apps restriction (SHA-1). Consider rotating. |
+| `boomboom/.env.production` (now untracked) | Google Maps API Key | ❌ **UNSAFE — was in git history** | Same as above |
+| `boomboom/.env.staging` (now untracked) | Google Maps API Key | ❌ **UNSAFE — was in git history** | Same as above |
+| `boomboom/android/app/google-services.json` | Firebase client config | ✅ Safe (public identifier, embedded in APK) | No action needed |
+| `boomboom/ios/BoomBoom/GoogleService-Info.plist` | Firebase client config | ✅ Safe (public identifier, embedded in IPA) | No action needed |
+| `boomboom/android/app/src/main/AndroidManifest.xml` | Google Maps API Key (Android manifest) | ⚠️ Visible in APK — restrict it | Restrict key in GCP to Android app with SHA-1 fingerprint of release keystore |
+| `boomboom/ios/BoomBoom/Info.plist` | Google Maps API Key (iOS) | ⚠️ Visible in IPA — restrict it | Restrict key in GCP to iOS app with bundle ID `com.boomboom` |
+| `backend/.env.production.example` | Placeholders only | ✅ Safe (no real values) | Template for VPS deployment — keep tracked |
+| `backend/.env.example` | Placeholders only | ✅ Safe (no real values) | Template for local dev — keep tracked |
+| `boomboom/.env.example` | Placeholders only | ✅ Safe (no real values) | Template for local dev — keep tracked |
+
+### 21.2 — Gitignore Fix (Applied in This Audit)
+
+**Problem:** `backend/.env`, `boomboom/.env`, `boomboom/.env.production`, `boomboom/.env.staging` were all tracked by git since the first commit.
+
+**Fix applied:**
+- Root `.gitignore` updated to exclude all `backend/.env*` (except `*.example`) and `boomboom/.env*` (except `*.example`)
+- `boomboom/.gitignore` updated with matching rules
+- `git rm --cached backend/.env boomboom/.env boomboom/.env.production boomboom/.env.staging` executed
+- Files remain on disk; they are no longer tracked
+
+**Blast radius:** Both commits `8725728` (first commit) and `d683853` contain these files in git history. The history is present on `Raksh027/full_stack`. **Treat the SMTP App Password and Google Maps API Key as compromised and rotate them before going live.**
+
+### 21.3 — CORS Security
+
+| Check | Result |
+|-------|--------|
+| Dev CORS (localhost regex) | ✅ **Auto-disabled in production** — `allow_origin_regex=None` when `settings.is_production` |
+| Production CORS origins | Configured via `CORS_ORIGINS` env var only |
+| Mobile app (React Native) | ✅ Unaffected — native apps do not send `Origin` headers |
+| Recommended production value | `CORS_ORIGINS=https://admin.boomboom.app` (admin panel only) |
+
+### 21.4 — Firebase Credential Path (Production Setup)
+
+The production `docker-compose.prod.yml` correctly uses:
+```
+volumes:
+  - "${FIREBASE_CREDENTIALS_FILE}:/run/secrets/firebase-admin.json:ro"
+environment:
+  FIREBASE_CREDENTIALS_JSON: /run/secrets/firebase-admin.json
+```
+
+**On Hostinger VPS, before first deploy:**
+```bash
+# 1. Download Firebase Admin SDK JSON from Firebase Console → Project Settings → Service Accounts
+# 2. Copy to VPS (never commit to git):
+sudo mkdir -p /etc/boomboom
+sudo cp boomboom-firebase-admin.json /etc/boomboom/firebase-admin.json
+sudo chmod 600 /etc/boomboom/firebase-admin.json
+
+# 3. Set in .env.production:
+FIREBASE_CREDENTIALS_FILE=/etc/boomboom/firebase-admin.json
+```
+
+### 21.5 — JWT Security
+
+| Check | Result |
+|-------|--------|
+| `validate_runtime()` in production | ✅ Rejects `JWT_SECRET` containing `replace-with` |
+| Minimum length enforced | ✅ `@field_validator` — raises if < 32 chars |
+| Dev placeholder accepted in prod | ❌ Blocked by `validate_runtime()` |
+| Access token lifetime | ✅ 15 minutes |
+| Refresh token lifetime | ✅ 30 days, SHA-256 stored (opaque) |
+| Algorithm | ✅ HS256 |
+
+**Generate a secure JWT secret for production:**
+```bash
+python -c "import secrets; print(secrets.token_hex(64))"
+```
+
+### 21.6 — Redis AOF Persistence
+
+| Environment | Config | Persistence |
+|------------|--------|-------------|
+| Development (`docker-compose.yml`) | `CMD: redis-server` | ❌ None (ephemeral — intentional for dev) |
+| Production (`docker-compose.prod.yml`) | `redis-server --appendonly yes --appendfsync everysec` | ✅ AOF with 1-second sync |
+| Production volume | `boomboom_prod_redis:/data` | ✅ Named volume persists across restarts |
+
+### 21.7 — Media Storage Persistence
+
+| Volume | Mount | Service | Status |
+|--------|-------|---------|--------|
+| `boomboom_prod_media` | `/app/storage/uploads` | `api` | ✅ Persists uploaded photos/videos |
+| `boomboom_prod_pgdata` | `/var/lib/postgresql/data` | `postgres` | ✅ Full database persistence |
+| `boomboom_prod_redis` | `/data` | `redis` | ✅ Session/rate-limit persistence |
+| `boomboom_caddy_data` | `/data` | `proxy` | ✅ Let's Encrypt certificates persist |
+| `boomboom_caddy_config` | `/config` | `proxy` | ✅ Caddy config cache persists |
+
+### 21.8 — Docker Compose Fix (Applied in This Audit)
+
+**Problem:** `worker` service was missing `SUBSCRIPTION_VERIFY_MODE: live` in its `environment` block. If `validate_runtime()` is called at worker startup, it could fail in production if `.env.production` still had `mock`.
+
+**Fix applied:** Added `SUBSCRIPTION_VERIFY_MODE: live` to `worker` environment in `docker-compose.prod.yml` (same as `api` service).
+
+### 21.9 — Frontend localhost / Dev URL Audit
+
+| Location | Pattern | Safe in Production? |
+|----------|---------|---------------------|
+| `boomboom/src/config/env.ts` | `localhost → 10.0.2.2` rewrite | ✅ Android only; production URL is `https://api.boomboom.app` — never triggers |
+| `boomboom/src/shared/utils/normalizeApi.ts` | localhost media URL rewrite | ✅ Only fires when API returns localhost URLs — not possible in production |
+| `boomboom/.env.production` | `API_URL=https://api.boomboom.app` | ✅ Correct production URL (now untracked but value confirmed) |
+
+### 21.10 — Secret Leak Scan Summary
+
+| Scan Target | Method | Result |
+|-------------|--------|--------|
+| Backend source (`backend/app/**`) | `rg` for password/secret/key patterns | ✅ No hardcoded secrets — only field definitions with empty defaults |
+| Frontend source (`boomboom/src/**`) | `rg` for API keys, tokens | ✅ No hardcoded secrets (GOOGLE_CLIENT_FALLBACK is a public OAuth client ID, not a secret) |
+| Native config files | `rg AIzaSy` across project | ⚠️ Maps API Key in `AndroidManifest.xml` and `Info.plist` — restrict in GCP (not rotatable; embedded in app) |
+| Tracked `.env` files | `git ls-files` | ❌ **Fixed** — 4 files removed from index via `git rm --cached` |
+
+### 21.11 — Required Actions Before Deploying to Hostinger
+
+> These must be completed before `docker compose -f docker-compose.prod.yml up -d`.
+
+| # | Action | Priority |
+|---|--------|----------|
+| 1 | **Revoke** the Gmail App Password in Google Account settings | 🔴 Critical |
+| 2 | **Generate new** Gmail App Password for Hostinger SMTP only | 🔴 Critical |
+| 3 | **Restrict** Google Maps API Key in GCP → Credentials to Android SHA-1 + iOS bundle ID | 🔴 Critical |
+| 4 | Copy Firebase Admin JSON to VPS at `/etc/boomboom/firebase-admin.json` | 🔴 Critical |
+| 5 | Create `backend/.env.production` from `backend/.env.production.example` with all real values | 🔴 Critical |
+| 6 | Generate 64-byte JWT secret (`python -c "import secrets; print(secrets.token_hex(64))"`) | 🔴 Critical |
+| 7 | Configure DNS: `api.boomboom.app → VPS IP` | 🔴 Critical |
+| 8 | Create `boomboom/.env.production` (Maps Key + `API_URL=https://api.boomboom.app`) | 🔴 Critical |
+| 9 | Run `docker compose -f docker-compose.prod.yml up -d --build` on VPS | When above done |
+| 10 | Verify `curl https://api.boomboom.app/health` returns `{"status":"ok"}` | Post-deploy |
