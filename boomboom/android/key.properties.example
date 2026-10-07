@@ -1,0 +1,25 @@
+# Android release signing — copy this file to key.properties and fill in real values.
+# key.properties is excluded from git (.gitignore). Never commit it.
+#
+# Generate the keystore once (store it OUTSIDE the git repository):
+#
+#   keytool -genkeypair -v -storetype JKS \
+#     -keystore "C:\Users\Dolly Nagrani\boomboom-secrets\boomboom-upload-key.jks" \
+#     -alias boomboom -keyalg RSA -keysize 2048 -validity 10000
+#
+# On macOS/Linux:
+#   keytool -genkeypair -v -storetype JKS \
+#     -keystore "$HOME/boomboom-secrets/boomboom-upload-key.jks" \
+#     -alias boomboom -keyalg RSA -keysize 2048 -validity 10000
+#
+# Then fill in the values below and save as android/key.properties.
+
+# Absolute path to the .jks file (use forward slashes even on Windows).
+storeFile=C:/Users/Dolly Nagrani/boomboom-secrets/boomboom-upload-key.jks
+
+# Passwords set when keytool was run.
+storePassword=YOUR_KEYSTORE_PASSWORD_HERE
+keyPassword=YOUR_KEY_PASSWORD_HERE
+
+# Must match the -alias flag used with keytool.
+keyAlias=boomboom

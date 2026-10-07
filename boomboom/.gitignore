@@ -82,6 +82,9 @@ yarn-error.log
 .env.local
 .env.*.local
 
+# Android release signing — key.properties.example IS tracked (it has no real values).
+android/key.properties
+
 # Google Maps / Firebase / Play service-account keys must never be committed
 **/google-services.json.bak
 **/GoogleService-Info.plist.bak
