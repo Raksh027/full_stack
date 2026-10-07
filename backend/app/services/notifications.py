@@ -54,7 +54,25 @@ PREF_ALIASES = {
 }
 
 
-def notification_visible(prefs: NotificationPreference, row_type: str) -> bool:
+_MASTER_FIELDS = (
+    "matches",
+    "likes",
+    "messages",
+    "profile_views",
+    "cross_path",
+    "traveller_alerts",
+    "free_tonight",
+    "general",
+)
+
+
+def notification_visible(
+    prefs: NotificationPreference,
+    row_type: str,
+    data: dict | None = None,
+) -> bool:
+    if (data or {}).get("kind") == "test":
+        return True
     if row_type in {
         NotificationType.LIKE_RECEIVED.value,
         NotificationType.OFFER_RECEIVED.value,
@@ -72,8 +90,40 @@ def notification_visible(prefs: NotificationPreference, row_type: str) -> bool:
     if row_type == NotificationType.TRAVEL_UPDATE.value:
         return bool(getattr(prefs, "traveller_alerts", True))
     if row_type == NotificationType.EVENT_UPDATE.value:
-        return bool(getattr(prefs, "free_tonight", True))
+        kind = (data or {}).get("kind")
+        if kind == "tonight":
+            return bool(getattr(prefs, "free_tonight", True))
+        return bool(prefs.general)
     return bool(prefs.general)
+
+
+def apply_preference_update(prefs: NotificationPreference, payload: dict[str, Any]) -> None:
+    normalized = {PREF_ALIASES.get(key, key): value for key, value in payload.items()}
+    explicit_all = "all_enabled" in normalized and normalized["all_enabled"] is not None
+    sent_categories = [
+        field
+        for field in _MASTER_FIELDS
+        if field in normalized and normalized[field] is not None
+    ]
+    for field in PREF_FIELDS:
+        if field == "all_enabled":
+            continue
+        if field in normalized and normalized[field] is not None:
+            setattr(prefs, field, bool(normalized[field]))
+    if explicit_all and not sent_categories:
+        enabled = bool(normalized["all_enabled"])
+        for field in _MASTER_FIELDS:
+            setattr(prefs, field, enabled)
+        prefs.all_enabled = enabled
+        return
+    if explicit_all:
+        prefs.all_enabled = bool(normalized["all_enabled"])
+        return
+    prefs.all_enabled = all(
+        bool(getattr(prefs, field, False))
+        for field in _MASTER_FIELDS
+        if field != "general"
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -151,7 +201,9 @@ class NotificationService:
         after, after_id = self._decode_cursor(cursor, actor.id)
         rows = await self._inbox.list_for_user(actor.id, max(limit * 3, 40), after, after_id)
         prefs = await self._prefs.get_or_create(actor.id)
-        visible = [row for row in rows if notification_visible(prefs, row.type)]
+        visible = [
+            row for row in rows if notification_visible(prefs, row.type, row.data_json)
+        ]
         has_more = len(visible) > limit
         page = visible[:limit]
         next_cursor = None
@@ -167,12 +219,7 @@ class NotificationService:
     async def unread_count(self, actor: User) -> dict[str, Any]:
         await self._hit("notification_read", actor.id)
         prefs = await self._prefs.get_or_create(actor.id)
-        rows = await self._inbox.list_for_user(actor.id, 80, None, None)
-        count = sum(
-            1
-            for row in rows
-            if not row.is_read and notification_visible(prefs, row.type)
-        )
+        count = await self._inbox.count_unread_visible(actor.id, prefs)
         return {"count": count}
 
     async def mark_read(self, actor: User, notification_id: UUID) -> dict[str, Any]:
@@ -196,12 +243,7 @@ class NotificationService:
 
     async def update_preferences(self, actor: User, payload: dict[str, Any]) -> dict[str, Any]:
         prefs = await self._prefs.get_or_create(actor.id)
-        normalized = {PREF_ALIASES.get(key, key): value for key, value in payload.items()}
-        for field in PREF_FIELDS:
-            if field in normalized and normalized[field] is not None:
-                setattr(prefs, field, bool(normalized[field]))
-        if "all_enabled" in normalized and normalized["all_enabled"] is not None:
-            prefs.general = bool(normalized["all_enabled"])
+        apply_preference_update(prefs, payload)
         await self._session.commit()
         return self._serialize_prefs(prefs)
 
@@ -568,7 +610,11 @@ class NotificationService:
             title="Test notification",
             body="Push delivery check",
             event_key=f"test:{datetime.now(UTC).timestamp()}:{actor.id}",
-            data={"type": NotificationType.PROFILE_ACTIVITY.value, "entity_id": str(actor.id)},
+            data={
+                "type": NotificationType.PROFILE_ACTIVITY.value,
+                "kind": "test",
+                "entity_id": str(actor.id),
+            },
             related_entity_type="user",
             related_entity_id=actor.id,
         )

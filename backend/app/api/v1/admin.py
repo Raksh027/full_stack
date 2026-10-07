@@ -289,7 +289,10 @@ async def list_events(
     offset: int = 0,
 ):
     _ = actor
-    return success(request, await service.list_events(query=q, status=status, limit=limit, offset=offset))
+    return success(
+        request,
+        await service.list_events(query=q, status=status, limit=limit, offset=offset),
+    )
 
 
 @router.get("/events/{event_id}")

@@ -189,11 +189,11 @@ COUNTRY_FLAGS: dict[str, tuple[str, str]] = {
 
 TRAVEL_TRIP_TAGS: dict[str, list[dict[str, str]]] = {
     "business": [
-        {"id": "business", "labelKey": "travel.tagBusiness", "icon": "briefcase-outline", "tone": "blue"},
+        {"id": "business", "labelKey": "travel.tagBusiness", "icon": "briefcase-outline", "tone": "blue"},  # noqa: E501
     ],
     "vacation": [
-        {"id": "travel-buddy", "labelKey": "travel.tagTravelBuddy", "icon": "airplane", "tone": "pink"},
-        {"id": "short-term", "labelKey": "travel.tagShortTerm", "icon": "sunny-outline", "tone": "blue"},
+        {"id": "travel-buddy", "labelKey": "travel.tagTravelBuddy", "icon": "airplane", "tone": "pink"},  # noqa: E501
+        {"id": "short-term", "labelKey": "travel.tagShortTerm", "icon": "sunny-outline", "tone": "blue"},  # noqa: E501
     ],
     "nightlife": [
         {"id": "nightlife", "labelKey": "travel.tagNightlife", "icon": "wine-outline", "tone": "pink"},

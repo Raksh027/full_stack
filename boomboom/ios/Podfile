@@ -1,0 +1,106 @@
+# Keep Firebase linked statically alongside the existing Google pods.
+$RNFirebaseAsStaticFramework = true
+
+# Resolve react_native_pods.rb with node to allow for hoisting
+require Pod::Executable.execute_command('node', ['-p',
+  'require.resolve(
+    "react-native/scripts/react_native_pods.rb",
+    {paths: [process.argv[1]]},
+  )', __dir__]).strip
+
+platform :ios, min_ios_version_supported
+prepare_react_native_project!
+
+linkage = ENV['USE_FRAMEWORKS']
+if linkage != nil
+  Pod::UI.puts "Configuring Pod with #{linkage}ally linked Frameworks".green
+  use_frameworks! :linkage => linkage.to_sym
+end
+
+target 'BoomBoom' do
+  # Google Maps SDK (react-native-maps Google provider on iOS)
+  rn_maps_path = '../node_modules/react-native-maps'
+  pod 'react-native-maps/Google', :path => rn_maps_path
+
+  config = use_native_modules!
+
+  use_react_native!(
+    :path => config[:reactNativePath],
+    # An absolute path to your application root.
+    :app_path => "#{Pod::Config.instance.installation_root}/.."
+  )
+
+  # Required by Google Sign-In's Swift dependency (AppCheckCore) when linking statically.
+  pod 'GoogleUtilities', :modular_headers => true
+  pod 'RecaptchaInterop', :modular_headers => true
+
+  post_install do |installer|
+    react_native_post_install(
+      installer,
+      config[:reactNativePath],
+      :mac_catalyst_enabled => false,
+      # :ccache_enabled => true
+    )
+
+    # Fabric crash guard: RCTThirdPartyComponentsProvider builds an NSDictionary from
+    # NSClassFromString(...) results. Any missing native class returns nil and aborts
+    # with SIGABRT. Rewrite the generated file to skip nil classes.
+    provider = File.join(__dir__, 'build', 'generated', 'ios', 'ReactCodegen', 'RCTThirdPartyComponentsProvider.mm')
+    if File.exist?(provider)
+      contents = File.read(provider)
+      unless contents.include?('BoomBoom nil-safe thirdPartyFabricComponents')
+        patched = <<~'OBJC'
+          /*
+           * Copyright (c) Meta Platforms, Inc. and affiliates.
+           *
+           * This source code is licensed under the MIT license found in the
+           * LICENSE file in the root directory of this source tree.
+           *
+           * BoomBoom nil-safe thirdPartyFabricComponents
+           */
+
+          #import <Foundation/Foundation.h>
+
+          #import "RCTThirdPartyComponentsProvider.h"
+          #import <React/RCTComponentViewProtocol.h>
+
+          @implementation RCTThirdPartyComponentsProvider
+
+          + (NSDictionary<NSString *, Class<RCTComponentViewProtocol>> *)thirdPartyFabricComponents
+          {
+            static NSDictionary<NSString *, Class<RCTComponentViewProtocol>> *thirdPartyComponents = nil;
+            static dispatch_once_t nativeComponentsToken;
+
+            dispatch_once(&nativeComponentsToken, ^{
+              NSMutableDictionary<NSString *, Class<RCTComponentViewProtocol>> *components = [NSMutableDictionary new];
+              void (^add)(NSString *, NSString *) = ^(NSString *name, NSString *className) {
+                Class cls = NSClassFromString(className);
+                if (cls != Nil) {
+                  components[name] = cls;
+                } else {
+                  NSLog(@"[BoomBoom] Skipping Fabric component %@ (%@ not linked)", name, className);
+                }
+              };
+        OBJC
+
+        # Extract original @"Name": NSClassFromString(@"Class") lines
+        contents.scan(/@"([^"]+)":\s*NSClassFromString\(@"([^"]+)"\)/).each do |name, class_name|
+          patched << "      add(@\"#{name}\", @\"#{class_name}\");\n"
+        end
+
+        patched << <<~'OBJC'
+              thirdPartyComponents = [components copy];
+            });
+
+            return thirdPartyComponents;
+          }
+
+          @end
+        OBJC
+
+        File.write(provider, patched)
+        Pod::UI.puts '[BoomBoom] Patched RCTThirdPartyComponentsProvider.mm to skip nil Fabric classes'.green
+      end
+    end
+  end
+end

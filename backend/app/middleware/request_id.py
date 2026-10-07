@@ -23,6 +23,15 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+        # HSTS: tell browsers to always use HTTPS for 1 year (production only).
+        # This is injected by the middleware so Caddy/nginx pass-through still
+        # propagates it; set only when we know TLS is in front.
+        from app.config import get_settings
+
+        if get_settings().is_production:
+            response.headers["Strict-Transport-Security"] = (
+                "max-age=31536000; includeSubDomains"
+            )
         if request.url.path not in {"/docs", "/redoc", "/openapi.json"}:
             response.headers["Cache-Control"] = "no-store"
         return response

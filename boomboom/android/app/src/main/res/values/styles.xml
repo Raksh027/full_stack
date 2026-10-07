@@ -1,0 +1,10 @@
+<resources>
+
+    <!-- Base application theme. -->
+    <style name="AppTheme" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="android:editTextBackground">@drawable/rn_edit_text_material</item>
+        <!-- Matches the JS splash so there is no white flash while the bundle loads. -->
+        <item name="android:windowBackground">@android:color/black</item>
+    </style>
+
+</resources>

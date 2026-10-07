@@ -324,7 +324,10 @@ async def photo_upload_url(
     user: Annotated[User, Depends(get_current_user)],
     mobile: Annotated[MobileService, Depends(get_mobile_service)],
 ):
-    return success(request, await mobile.request_photo_upload(user.id, body.content_type, body.file_size))
+    return success(
+        request,
+        await mobile.request_photo_upload(user.id, body.content_type, body.file_size),
+    )
 
 
 @router.post("/profiles/me/photos/{photo_id}/confirm")

@@ -63,13 +63,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 def create_app() -> FastAPI:
     settings = get_settings()
+    # Disable interactive API docs in production to reduce attack surface.
+    # Staging and development keep /docs and /redoc available.
+    docs_url = None if settings.is_production else "/docs"
+    redoc_url = None if settings.is_production else "/redoc"
     app = FastAPI(
         title=settings.app_name,
         version="0.1.0",
         openapi_tags=OPENAPI_TAGS,
         lifespan=lifespan,
-        docs_url="/docs",
-        redoc_url="/redoc",
+        docs_url=docs_url,
+        redoc_url=redoc_url,
     )
     app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(

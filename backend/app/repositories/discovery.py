@@ -312,10 +312,12 @@ class DiscoveryQueryRepository:
 
 
 def _filters_that_include(gender: str) -> list[str]:
-    if gender == "Woman":
-        return ["Women"]
-    if gender == "Man":
-        return ["Men"]
-    if gender == "Non-Binary":
-        return ["Non-binary", "Non-Binary"]
+    # Profiles store the app values (woman/man) and older title-case values.
+    key = (gender or "").strip().lower().replace("-", "").replace(" ", "")
+    if key in {"woman", "women"}:
+        return ["Women", "woman"]
+    if key in {"man", "men"}:
+        return ["Men", "man"]
+    if key in {"nonbinary"}:
+        return ["Non-binary", "Non-Binary", "nonbinary"]
     return []

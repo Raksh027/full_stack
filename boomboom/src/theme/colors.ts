@@ -1,0 +1,62 @@
+export const palette = {
+  black: '#000000',
+  white: '#FFFFFF',
+  gray950: '#0A0A0A',
+  gray900: '#111111',
+  gray850: '#1A1A1A',
+  gray800: '#1C1C1E',
+  gray750: '#2A2A2A',
+  gray700: '#2E2E2E',
+  gray650: '#333333',
+  gray600: '#444444',
+  gray500: '#666666',
+  gray400: '#888888',
+  gray300: '#999999',
+  gray200: '#CCCCCC',
+  gray100: '#DDDDDD',
+  gray50: '#F9F9F9',
+  pink: '#FF5864',
+  red: '#FF4444',
+  redDark: '#1A0000',
+  redBorder: '#330000',
+  green: '#4CD964',
+  sky: '#0EA5E9',
+  purple: '#A855F7',
+} as const;
+
+export const colors = {
+  background: palette.black,
+  surface: palette.gray850,
+  surfaceMuted: palette.gray950,
+  surfaceSelected: palette.gray700,
+  border: palette.gray750,
+  borderMuted: palette.gray850,
+  borderStrong: palette.gray600,
+
+  textPrimary: palette.white,
+  textSecondary: palette.gray400,
+  textMuted: palette.gray500,
+  textDisabled: palette.gray600,
+  textInverse: palette.black,
+
+  inputLightBackground: palette.gray50,
+  inputLightBorder: palette.gray100,
+  inputLightText: palette.black,
+  placeholder: palette.gray300,
+
+  buttonPrimary: palette.white,
+  buttonPrimaryText: palette.black,
+  buttonDisabled: palette.gray200,
+
+  accent: palette.pink,
+  success: palette.green,
+  danger: palette.red,
+  dangerSurface: palette.redDark,
+  dangerBorder: palette.redBorder,
+
+  overlay: 'rgba(0, 0, 0, 0.8)',
+  scrim: 'rgba(8, 8, 8, 0.53)',
+
+  gradientBorder: ['#3AA0FF', '#7B5CFF'],
+  gradientFill: ['#8B5CFF', '#3DB4FF'],
+} as const;

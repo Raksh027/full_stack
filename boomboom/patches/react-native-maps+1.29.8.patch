@@ -1,0 +1,36 @@
+diff --git a/node_modules/react-native-maps/ios/AirMaps/RNMapsAirModule.mm b/node_modules/react-native-maps/ios/AirMaps/RNMapsAirModule.mm
+index f238f63..bca0796 100644
+--- a/node_modules/react-native-maps/ios/AirMaps/RNMapsAirModule.mm
++++ b/node_modules/react-native-maps/ios/AirMaps/RNMapsAirModule.mm
+@@ -29,6 +29,8 @@ @interface RNMapsAirModule()<NativeAirMapsModuleSpec>
+ 
+ @implementation RNMapsAirModule
+ 
++RCT_EXPORT_MODULE(RNMapsAirModule)
++
+ @synthesize viewRegistry_DEPRECATED = _viewRegistry_DEPRECATED;
+ 
+ - (void)executeWithMapView:(double)tag
+@@ -152,12 +154,6 @@ - (void)getCoordinateForPoint:(double)tag
+     return std::make_shared<facebook::react::NativeAirMapsModuleSpecJSI>(params);
+ }
+ 
+-+ (NSString *)moduleName { 
+-    return nil;
+-}
+-
+-
+-
+ @end
+ 
+ 
+diff --git a/node_modules/react-native-maps/src/specs/NativeAirMapsModule.ts b/node_modules/react-native-maps/src/specs/NativeAirMapsModule.ts
+index d00ffd1..8c33e13 100644
+--- a/node_modules/react-native-maps/src/specs/NativeAirMapsModule.ts
++++ b/node_modules/react-native-maps/src/specs/NativeAirMapsModule.ts
+@@ -33,4 +33,4 @@ export interface Spec extends TurboModule {
+   getCoordinateForPoint(tag: Double, point: Point): Promise<LatLng>;
+ }
+ 
+-export default TurboModuleRegistry.getEnforcing<Spec>('RNMapsAirModule');
++export default TurboModuleRegistry.get<Spec>('RNMapsAirModule') as Spec;

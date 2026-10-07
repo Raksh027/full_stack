@@ -1,0 +1,113 @@
+{
+  "project_info": {
+    "project_number": "1009114314679",
+    "project_id": "boomboom-7712a",
+    "storage_bucket": "boomboom-7712a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1009114314679:android:109e846aa50634d54e5a32",
+        "android_client_info": {
+          "package_name": "com.boomboomapp.date"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1009114314679-6fo79aqto6jucode96rqf1b64jaiqoaj.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCBmFPJlftNbjjoKRYojWCtft98K-74wEM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1009114314679-6fo79aqto6jucode96rqf1b64jaiqoaj.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1009114314679:android:efd3cfc6f3aa2d944e5a32",
+        "android_client_info": {
+          "package_name": "com.jetcom.boomboom"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1009114314679-58s5g2n95f0lv1nfsctjcmkfql0fu1kk.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.jetcom.boomboom",
+            "certificate_hash": "173ceaa9ae437e40dea808e79dc4497daf2347d7"
+          }
+        },
+        {
+          "client_id": "1009114314679-i3u0mi6ha48addg8kkelfi0u072kin2p.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.jetcom.boomboom",
+            "certificate_hash": "65d7d5022f116decdd080232010524f8e1a2a325"
+          }
+        },
+        {
+          "client_id": "1009114314679-6fo79aqto6jucode96rqf1b64jaiqoaj.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCBmFPJlftNbjjoKRYojWCtft98K-74wEM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1009114314679-6fo79aqto6jucode96rqf1b64jaiqoaj.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1009114314679:android:e85b863e7eb668934e5a32",
+        "android_client_info": {
+          "package_name": "com.wts.boomboomapp"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1009114314679-6fo79aqto6jucode96rqf1b64jaiqoaj.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCBmFPJlftNbjjoKRYojWCtft98K-74wEM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1009114314679-6fo79aqto6jucode96rqf1b64jaiqoaj.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,0 +1,128 @@
+# Production Docker Compose — Hostinger VPS deployment.
+# Postgres and Redis are NOT published to the host (no port binding).
+# HTTPS is handled by Caddy (auto-TLS via Let's Encrypt).
+# All secrets come from .env.production (never committed to git).
+#
+# First deploy:
+#   cp .env.production.example .env.production
+#   # Edit .env.production with real secrets
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# Rolling update:
+#   git pull
+#   docker compose -f docker-compose.prod.yml up -d --build api worker
+
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: boomboom_production
+    volumes:
+      - boomboom_prod_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d boomboom_production"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    restart: always
+    # No ports exposed — database is private, accessed only by api/worker containers.
+
+  redis:
+    image: redis:7-alpine
+    # Enable AOF persistence so sessions / rate limits survive restarts.
+    command: redis-server --appendonly yes --appendfsync everysec
+    volumes:
+      - boomboom_prod_redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    restart: always
+
+  api:
+    build: .
+    env_file:
+      - .env.production
+    environment:
+      APP_ENV: production
+      SUBSCRIPTION_VERIFY_MODE: live
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/boomboom_production
+      REDIS_URL: redis://redis:6379/0
+      FIREBASE_CREDENTIALS_JSON: /run/secrets/firebase-admin.json
+      # Increase workers for production (1 per CPU core, max 8).
+      WEB_CONCURRENCY: "4"
+    expose:
+      - "8080"
+    volumes:
+      - boomboom_prod_media:/app/storage/uploads
+      - "${FIREBASE_CREDENTIALS_FILE}:/run/secrets/firebase-admin.json:ro"
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command:
+      - sh
+      - -c
+      - |
+        i=0
+        until python -m alembic upgrade head; do
+          i=$$((i+1))
+          if [ "$$i" -ge 30 ]; then
+            echo "Migration failed after 30 attempts — aborting."
+            exit 1
+          fi
+          echo "Migration attempt $$i failed, retrying in 3s..."
+          sleep 3
+        done
+        exec python -m uvicorn app.main:app \
+          --host 0.0.0.0 \
+          --port 8080 \
+          --workers $${WEB_CONCURRENCY:-4} \
+          --log-level info \
+          --no-access-log
+
+  worker:
+    build: .
+    env_file:
+      - .env.production
+    environment:
+      APP_ENV: production
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/boomboom_production
+      REDIS_URL: redis://redis:6379/0
+      FIREBASE_CREDENTIALS_JSON: /run/secrets/firebase-admin.json
+    volumes:
+      - "${FIREBASE_CREDENTIALS_FILE}:/run/secrets/firebase-admin.json:ro"
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["python", "-m", "app.workers.notifications"]
+
+  proxy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ../deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - boomboom_caddy_data:/data
+      - boomboom_caddy_config:/config
+    depends_on:
+      api:
+        condition: service_started
+    restart: always
+
+volumes:
+  boomboom_prod_pgdata:
+  boomboom_prod_media:
+  boomboom_prod_redis:
+  boomboom_caddy_data:
+  boomboom_caddy_config:

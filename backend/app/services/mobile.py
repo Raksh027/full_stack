@@ -98,6 +98,16 @@ from app.services.subscriptions import SubscriptionService
 
 logger = logging.getLogger(__name__)
 
+_PUSH_SETTING_KEYS = (
+    "messages",
+    "matches",
+    "likes",
+    "profileViews",
+    "crossPath",
+    "travellerAlerts",
+    "freeTonight",
+)
+
 
 def _journey_country_flag(body: dict[str, Any], side: str) -> tuple[str, str]:
     name_key = "fromCountry" if side == "from" else "toCountry"
@@ -1233,25 +1243,23 @@ class MobileService:
                 "email": raw.get("email", False),
             }
         )
-        settings["all"] = all(
-            bool(settings[key])
-            for key in (
-                "messages",
-                "matches",
-                "likes",
-                "profileViews",
-                "crossPath",
-                "travellerAlerts",
-                "freeTonight",
-                "email",
-            )
-        )
+        settings["all"] = all(bool(settings[key]) for key in _PUSH_SETTING_KEYS)
         return settings
 
-    async def update_notification_settings(self, user: User, body: dict[str, Any]) -> dict[str, Any]:
-        current = await self.get_notification_settings(user)
-        current.update({key: value for key, value in body.items() if value is not None})
-        await self.notifications.update_preferences(user, current)
+    async def update_notification_settings(
+        self, user: User, body: dict[str, Any]
+    ) -> dict[str, Any]:
+        incoming = {key: value for key, value in body.items() if value is not None}
+        if "all" in incoming:
+            enabled = bool(incoming["all"])
+            payload: dict[str, Any] = {key: enabled for key in _PUSH_SETTING_KEYS}
+            payload["general"] = enabled
+            payload["all"] = enabled
+            if "email" in incoming:
+                payload["email"] = bool(incoming["email"])
+        else:
+            payload = {key: value for key, value in incoming.items() if key != "all"}
+        await self.notifications.update_preferences(user, payload)
         return await self.get_notification_settings(user)
 
     async def list_notifications(self, user: User, limit: int, cursor: str | None) -> dict[str, Any]:

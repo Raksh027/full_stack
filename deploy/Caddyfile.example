@@ -1,0 +1,42 @@
+# Caddy 2 reverse-proxy configuration for BoomBoom API.
+# Copy this file to deploy/Caddyfile and replace the domain placeholder.
+#
+# Caddy auto-provisions TLS certificates from Let's Encrypt.
+# Requirements:
+#   - Ports 80 and 443 must be reachable from the internet.
+#   - The domain's A record must point to this server's IP.
+#
+# Usage:
+#   Staging:    docker compose -f docker-compose.staging.yml up -d
+#   Production: docker compose -f docker-compose.prod.yml up -d
+
+# Replace "your-domain.com" with your real domain (e.g. api.boomboom.app).
+your-domain.com {
+    # Reverse-proxy all traffic to the FastAPI container.
+    reverse_proxy api:8080
+
+    # Security hardening.
+    header {
+        # Remove server fingerprint.
+        -Server
+        # Additional security headers (API also sets these, belt-and-suspenders).
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "no-referrer"
+        # HSTS — 1 year, include subdomains.
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    }
+
+    # Request/access logging.
+    log {
+        output stderr
+        format json
+        level INFO
+    }
+}
+
+# Optional: redirect bare HTTP to HTTPS (Caddy does this automatically when
+# HTTPS is configured, but you can make it explicit).
+# http://your-domain.com {
+#     redir https://your-domain.com{uri} permanent
+# }

@@ -144,6 +144,53 @@ def test_notification_settings_visibility() -> None:
     prefs.matches = True
     prefs.profile_views = False
     assert notification_visible(prefs, NotificationType.PROFILE_VIEW.value) is False
+    prefs.free_tonight = False
+    prefs.general = True
+    assert notification_visible(
+        prefs, NotificationType.EVENT_UPDATE.value, {"kind": "tonight"}
+    ) is False
+    assert notification_visible(
+        prefs, NotificationType.EVENT_UPDATE.value, {"eventId": "evt"}
+    ) is True
+    prefs.free_tonight = True
+    prefs.general = False
+    assert notification_visible(
+        prefs, NotificationType.EVENT_UPDATE.value, {"kind": "tonight"}
+    ) is True
+    assert notification_visible(prefs, NotificationType.EVENT_UPDATE.value, {}) is False
+    prefs.profile_views = False
+    assert notification_visible(
+        prefs, NotificationType.PROFILE_ACTIVITY.value, {"kind": "test"}
+    ) is True
+
+
+def test_all_preference_cascades_only_when_sent_alone() -> None:
+    from app.models.orm import NotificationPreference
+    from app.services.notifications import apply_preference_update
+
+    prefs = NotificationPreference()
+    prefs.matches = True
+    prefs.likes = True
+    prefs.messages = True
+    prefs.profile_views = True
+    prefs.cross_path = True
+    prefs.traveller_alerts = True
+    prefs.free_tonight = True
+    prefs.general = True
+    prefs.favorites = False
+    prefs.email_enabled = False
+    apply_preference_update(prefs, {"all": False})
+    assert prefs.likes is False
+    assert prefs.matches is False
+    assert prefs.general is False
+    assert prefs.all_enabled is False
+    assert prefs.email_enabled is False
+
+    prefs.likes = True
+    apply_preference_update(prefs, {"likes": False})
+    assert prefs.likes is False
+    assert prefs.matches is False
+    assert prefs.all_enabled is False
 
 
 def test_online_and_new_windows() -> None:

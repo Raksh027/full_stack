@@ -29,6 +29,7 @@ class PushResult:
     invalid_tokens: list[str] = field(default_factory=list)
     retryable: bool = False
     error_code: str | None = None
+    skipped: bool = False
 
 
 class PushProvider(Protocol):
@@ -54,7 +55,7 @@ class NoopPushProvider:
         collapse_key: str | None = None,
     ) -> PushResult:
         logger.info("fcm_noop token_count=%s type=%s", len(tokens), data.get("type"))
-        return PushResult(success_count=0, failure_count=0)
+        return PushResult(skipped=True)
 
 
 class RecordingPushProvider:

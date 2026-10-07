@@ -264,6 +264,34 @@ async def service_call(websocket: WebSocket, action) -> None:
             )
 
 
+def _mobile_should_receive(
+    event_type: str, data: dict[str, Any], user_id: UUID, sender_id: str
+) -> bool:
+    if event_type == "MESSAGE_SENT" and str(user_id) != sender_id:
+        return False
+    if event_type == "MESSAGE_RECEIVED" and str(user_id) == sender_id:
+        return False
+    if event_type in {"TYPING_START", "TYPING_STOP"} and str(user_id) == str(
+        data.get("userId") or ""
+    ):
+        return False
+    return True
+
+
+async def _conversation_member_ids(factory, conversation_id: UUID) -> list[UUID]:
+    from sqlalchemy import select
+
+    from app.models.orm import ConversationMember
+
+    async with factory() as session:
+        result = await session.execute(
+            select(ConversationMember.user_id).where(
+                ConversationMember.conversation_id == conversation_id
+            )
+        )
+        return list(result.scalars().all())
+
+
 async def run_event_fanout(app) -> None:
     hub: ConnectionHub = app.state.hub
     broker = app.state.broker
@@ -303,31 +331,45 @@ async def run_event_fanout(app) -> None:
         data = event.get("data") or {}
         sender_id = str(data.get("senderId") or "")
         delivered_needed: UUID | None = None
-        for websocket in hub.conversation_sockets(conversation_id):
-            meta = hub.meta.get(websocket)
-            if meta is None:
-                continue
-            user_id, _ = meta
-            if event_type == "MESSAGE_SENT" and str(user_id) != sender_id:
-                continue
-            if event_type == "MESSAGE_RECEIVED" and str(user_id) == sender_id:
-                continue
-            typing = event_type in {"TYPING_START", "TYPING_STOP"}
-            if typing and str(user_id) == str(data.get("userId") or ""):
-                continue
-            try:
-                await _send_json(websocket, event)
-                from app.websocket.gateway import remap_event
+        from app.websocket.gateway import remap_event
 
-                remapped = remap_event(event_type, data)
-                for user_socket in hub.user_sockets(user_id):
-                    if remapped and hub.meta.get(user_socket, (None, None))[1] is None:
-                        await _send_json(user_socket, remapped)
-                inbound = event_type == "MESSAGE_RECEIVED" and str(user_id) != sender_id
-                if inbound and data.get("id"):
-                    delivered_needed = UUID(str(data["id"]))
-            except Exception:
-                logger.info("ws_deliver_failed conversation_id=%s", conversation_id)
+        remapped = remap_event(event_type, data)
+        try:
+            member_ids = await _conversation_member_ids(factory, conversation_id)
+        except Exception:
+            logger.info("ws_members_lookup_failed conversation_id=%s", conversation_id)
+            member_ids = []
+        if not member_ids:
+            member_ids = list(
+                {
+                    meta[0]
+                    for socket in hub.conversation_sockets(conversation_id)
+                    if (meta := hub.meta.get(socket)) is not None
+                }
+            )
+        for user_id in member_ids:
+            if not _mobile_should_receive(event_type, data, user_id, sender_id):
+                continue
+            for websocket in hub.conversation_sockets(conversation_id):
+                meta = hub.meta.get(websocket)
+                if meta is None or meta[0] != user_id:
+                    continue
+                try:
+                    await _send_json(websocket, event)
+                except Exception:
+                    logger.info("ws_deliver_failed conversation_id=%s", conversation_id)
+            if remapped is None:
+                continue
+            for user_socket in hub.user_sockets(user_id):
+                if hub.meta.get(user_socket, (None, object()))[1] is not None:
+                    continue
+                try:
+                    await _send_json(user_socket, remapped)
+                except Exception:
+                    logger.info("ws_deliver_failed conversation_id=%s", conversation_id)
+            inbound = event_type == "MESSAGE_RECEIVED" and str(user_id) != sender_id
+            if inbound and data.get("id"):
+                delivered_needed = UUID(str(data["id"]))
         if delivered_needed is not None:
             try:
                 async with factory() as session:

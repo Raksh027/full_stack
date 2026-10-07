@@ -152,8 +152,11 @@ class Settings(BaseSettings):
         return [item.strip() for item in self.cors_origins.split(",") if item.strip()]
 
     def validate_runtime(self) -> None:
-        if self.is_production and "replace-with" in self.jwt_secret:
-            raise RuntimeError("JWT_SECRET must be replaced before running in production")
+        # Reject placeholder JWT secret in both staging and production.
+        if (self.is_production or self.is_staging) and "replace-with" in self.jwt_secret:
+            raise RuntimeError(
+                "JWT_SECRET must be replaced before running in staging or production"
+            )
         if (self.is_production or self.is_staging) and "boomboom_dev_only" in self.database_url:
             raise RuntimeError(
                 "DATABASE_URL must not use local development credentials in staging/production"

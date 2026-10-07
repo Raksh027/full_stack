@@ -1,0 +1,18 @@
+# Optional admin UI override.
+# Use only when the admin Next.js app is present at ../apps/admin.
+#
+# Run: docker compose -f docker-compose.yml -f docker-compose.override.admin.yml up
+
+services:
+  admin:
+    build:
+      context: ../apps/admin
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8080
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8080
+    depends_on:
+      api:
+        condition: service_started

@@ -433,6 +433,7 @@ class NotificationDeliveryStatus(StrEnum):
     SENT = "SENT"
     FAILED = "FAILED"
     INVALID_TOKEN = "INVALID_TOKEN"
+    SKIPPED = "SKIPPED"
 
 
 class AppNotification(TimestampMixin, Base):

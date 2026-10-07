@@ -56,6 +56,8 @@ async def deliver_notification_job(
     if row.type == "NEW_MESSAGE" and presence is not None and row.related_entity_id is not None:
         focused = await presence.focused_conversation(row.user_id)
         if focused == row.related_entity_id:
+            await inbox.set_status(notification_id, NotificationDeliveryStatus.SKIPPED.value)
+            await session.commit()
             latency_ms = int((datetime.now(UTC) - started).total_seconds() * 1000)
             logger.info(
                 "notification_push_skipped notification_id=%s type=%s "
@@ -68,6 +70,8 @@ async def deliver_notification_job(
 
     tokens = [item.token for item in await devices.list_active_for_user(row.user_id)]
     if not tokens:
+        await inbox.set_status(notification_id, NotificationDeliveryStatus.SKIPPED.value)
+        await session.commit()
         latency_ms = int((datetime.now(UTC) - started).total_seconds() * 1000)
         logger.info(
             "notification_push_no_devices notification_id=%s type=%s latency_ms=%s",
@@ -91,6 +95,15 @@ async def deliver_notification_job(
             row.id,
             len(result.invalid_tokens),
         )
+    if result.skipped:
+        await inbox.set_status(notification_id, NotificationDeliveryStatus.SKIPPED.value)
+        await session.commit()
+        logger.info(
+            "notification_push_skipped notification_id=%s type=%s reason=provider_noop",
+            row.id,
+            row.type,
+        )
+        return
     if result.success_count > 0:
         await inbox.set_status(notification_id, NotificationDeliveryStatus.SENT.value)
         await session.commit()
@@ -162,7 +175,30 @@ async def consume_notification_jobs(
         except asyncio.CancelledError:
             raise
         except Exception:
-            logger.info("notification_worker_error")
+            logger.exception("notification_worker_error")
+            await _requeue_or_fail(jobs, factory, payload)
+
+
+async def _requeue_or_fail(jobs: JobQueue, factory, payload: dict) -> None:
+    attempt = int(payload.get("attempt") or 0)
+    raw_id = payload.get("notification_id")
+    if raw_id and attempt + 1 < MAX_ATTEMPTS:
+        await jobs.enqueue({"notification_id": str(raw_id), "attempt": attempt + 1})
+        return
+    if not raw_id:
+        return
+    try:
+        notification_id = UUID(str(raw_id))
+    except (TypeError, ValueError):
+        return
+    try:
+        async with factory() as session:
+            await NotificationRepository(session).set_status(
+                notification_id, NotificationDeliveryStatus.FAILED.value
+            )
+            await session.commit()
+    except Exception:
+        logger.exception("notification_worker_fail_status")
 
 
 async def run_notification_worker(app) -> None:

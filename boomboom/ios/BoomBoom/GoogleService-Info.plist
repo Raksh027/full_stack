@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CLIENT_ID</key>
+	<string>1009114314679-ffadrt0jl16fg8qghoqcf4glrkcbgdjj.apps.googleusercontent.com</string>
+	<key>REVERSED_CLIENT_ID</key>
+	<string>com.googleusercontent.apps.1009114314679-ffadrt0jl16fg8qghoqcf4glrkcbgdjj</string>
+	<key>ANDROID_CLIENT_ID</key>
+	<string>1009114314679-58s5g2n95f0lv1nfsctjcmkfql0fu1kk.apps.googleusercontent.com</string>
+	<key>API_KEY</key>
+	<string>AIzaSyBaMAPfAU49Ax0Egrulnpks9VsrGSoxIt4</string>
+	<key>GCM_SENDER_ID</key>
+	<string>1009114314679</string>
+	<key>PLIST_VERSION</key>
+	<string>1</string>
+	<key>BUNDLE_ID</key>
+	<string>com.boomboom.app</string>
+	<key>PROJECT_ID</key>
+	<string>boomboom-7712a</string>
+	<key>STORAGE_BUCKET</key>
+	<string>boomboom-7712a.firebasestorage.app</string>
+	<key>IS_ADS_ENABLED</key>
+	<false></false>
+	<key>IS_ANALYTICS_ENABLED</key>
+	<false></false>
+	<key>IS_APPINVITE_ENABLED</key>
+	<true></true>
+	<key>IS_GCM_ENABLED</key>
+	<true></true>
+	<key>IS_SIGNIN_ENABLED</key>
+	<true></true>
+	<key>GOOGLE_APP_ID</key>
+	<string>1:1009114314679:ios:8d521ff00933ace84e5a32</string>
+</dict>
+</plist>

@@ -172,7 +172,87 @@ async def test_skips_push_when_focused_on_conversation(monkeypatch) -> None:
         {"notification_id": str(row.id), "attempt": 0},
     )
     assert push.sent == []
-    assert inbox.status is None
+    assert inbox.status == NotificationDeliveryStatus.SKIPPED.value
+
+
+@pytest.mark.asyncio
+async def test_no_devices_marks_skipped(monkeypatch) -> None:
+    row = _Row(
+        id=uuid.uuid4(),
+        user_id=uuid.uuid4(),
+        type=NotificationType.LIKE_RECEIVED.value,
+        title="New like",
+        body="Someone liked you",
+        data_json={"type": "LIKE_RECEIVED"},
+        related_entity_id=uuid.uuid4(),
+        event_key="like:none",
+        delivery_status=NotificationDeliveryStatus.QUEUED.value,
+    )
+    inbox = _Inbox(row)
+    monkeypatch.setattr("app.workers.notifications.NotificationRepository", lambda _session: inbox)
+    monkeypatch.setattr(
+        "app.workers.notifications.DeviceTokenRepository",
+        lambda _session: _Devices([]),
+    )
+    await deliver_notification_job(
+        _SessionStub(),
+        MemoryJobQueue(),
+        RecordingPushProvider(),
+        None,
+        {"notification_id": str(row.id), "attempt": 0},
+    )
+    assert inbox.status == NotificationDeliveryStatus.SKIPPED.value
+
+
+@pytest.mark.asyncio
+async def test_noop_provider_marks_skipped(monkeypatch) -> None:
+    from app.core.push import NoopPushProvider
+
+    row = _Row(
+        id=uuid.uuid4(),
+        user_id=uuid.uuid4(),
+        type=NotificationType.LIKE_RECEIVED.value,
+        title="New like",
+        body="Someone liked you",
+        data_json={"type": "LIKE_RECEIVED"},
+        related_entity_id=uuid.uuid4(),
+        event_key="like:noop",
+        delivery_status=NotificationDeliveryStatus.QUEUED.value,
+    )
+    inbox = _Inbox(row)
+    monkeypatch.setattr("app.workers.notifications.NotificationRepository", lambda _session: inbox)
+    monkeypatch.setattr(
+        "app.workers.notifications.DeviceTokenRepository", lambda _session: _Devices(["token-1"])
+    )
+    await deliver_notification_job(
+        _SessionStub(),
+        MemoryJobQueue(),
+        NoopPushProvider(),
+        None,
+        {"notification_id": str(row.id), "attempt": 0},
+    )
+    assert inbox.status == NotificationDeliveryStatus.SKIPPED.value
+
+
+@pytest.mark.asyncio
+async def test_worker_error_requeues(monkeypatch) -> None:
+    enqueued: list[dict] = []
+
+    async def _boom(*_args, **_kwargs):
+        raise RuntimeError("db down")
+
+    class _Jobs(_QueueScript):
+        async def enqueue(self, payload):
+            enqueued.append(payload)
+
+    monkeypatch.setattr("app.workers.notifications.deliver_notification_job", _boom)
+    jobs = _Jobs([{"notification_id": "n1", "attempt": 0}])
+    await _run_until_cancel(
+        consume_notification_jobs(
+            jobs, RecordingPushProvider(), None, _SessionFactory(_SessionStub())
+        ),
+    )
+    assert enqueued == [{"notification_id": "n1", "attempt": 1}]
 
 
 class _FakeRedis:

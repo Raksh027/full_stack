@@ -190,7 +190,7 @@ class ChatService:
                     message_id=message.id,
                     recipient_id=peer_id,
                     conversation_id=conversation_id,
-                    preview=None,
+                    preview=text,
                 )
         await self._session.commit()
         if self._notifier is not None and pending:

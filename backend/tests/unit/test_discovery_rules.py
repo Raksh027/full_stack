@@ -5,6 +5,7 @@ from app.core.discovery_rules import (
     birth_date_bounds,
     profile_genders_for_filter,
 )
+from app.repositories.discovery import _filters_that_include
 
 
 def test_birth_date_bounds() -> None:
@@ -19,6 +20,13 @@ def test_gender_filter_mapping() -> None:
     assert profile_genders_for_filter("Women") == ["Woman", "woman"]
     assert profile_genders_for_filter("Men") == ["Man", "man"]
     assert profile_genders_for_filter("Non-binary") == ["Non-Binary", "Non-binary", "nonbinary"]
+
+
+def test_reciprocal_filter_accepts_app_genders() -> None:
+    assert "Women" in _filters_that_include("woman")
+    assert "Men" in _filters_that_include("man")
+    assert "Women" in _filters_that_include("Woman")
+    assert "Men" in _filters_that_include("Man")
 
 
 def test_straight_audience_uses_opposite_gender() -> None:

@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, select, update
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,6 +10,7 @@ from app.models.orm import (
     DeviceToken,
     NotificationDeliveryStatus,
     NotificationPreference,
+    NotificationType,
 )
 
 
@@ -210,6 +211,70 @@ class NotificationRepository:
             select(func.count())
             .select_from(AppNotification)
             .where(AppNotification.user_id == user_id, AppNotification.is_read.is_(False))
+        )
+        return int(result.scalar_one())
+
+    async def count_unread_visible(self, user_id: UUID, prefs: NotificationPreference) -> int:
+        kind = AppNotification.data_json["kind"].as_string()
+        tonight = and_(
+            AppNotification.type == NotificationType.EVENT_UPDATE.value,
+            kind == "tonight",
+        )
+        other_event = and_(
+            AppNotification.type == NotificationType.EVENT_UPDATE.value,
+            or_(kind.is_(None), kind != "tonight"),
+        )
+        included = [kind == "test"]
+        if prefs.likes:
+            included.append(
+                AppNotification.type.in_(
+                    [
+                        NotificationType.LIKE_RECEIVED.value,
+                        NotificationType.OFFER_RECEIVED.value,
+                    ]
+                )
+            )
+        if prefs.matches:
+            included.append(AppNotification.type == NotificationType.MATCH_CREATED.value)
+        if prefs.messages:
+            included.append(AppNotification.type == NotificationType.NEW_MESSAGE.value)
+        if getattr(prefs, "profile_views", True):
+            included.append(
+                AppNotification.type.in_(
+                    [
+                        NotificationType.PROFILE_VIEW.value,
+                        NotificationType.PROFILE_ACTIVITY.value,
+                    ]
+                )
+            )
+        if getattr(prefs, "traveller_alerts", True):
+            included.append(AppNotification.type == NotificationType.TRAVEL_UPDATE.value)
+        if getattr(prefs, "free_tonight", True):
+            included.append(tonight)
+        if prefs.general:
+            included.append(other_event)
+            included.append(
+                AppNotification.type.notin_(
+                    [
+                        NotificationType.LIKE_RECEIVED.value,
+                        NotificationType.OFFER_RECEIVED.value,
+                        NotificationType.MATCH_CREATED.value,
+                        NotificationType.NEW_MESSAGE.value,
+                        NotificationType.PROFILE_VIEW.value,
+                        NotificationType.PROFILE_ACTIVITY.value,
+                        NotificationType.TRAVEL_UPDATE.value,
+                        NotificationType.EVENT_UPDATE.value,
+                    ]
+                )
+            )
+        result = await self._session.execute(
+            select(func.count())
+            .select_from(AppNotification)
+            .where(
+                AppNotification.user_id == user_id,
+                AppNotification.is_read.is_(False),
+                or_(*included),
+            )
         )
         return int(result.scalar_one())
 

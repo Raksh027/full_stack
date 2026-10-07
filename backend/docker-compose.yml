@@ -98,18 +98,10 @@ services:
         condition: service_healthy
     command: ["python", "-m", "app.workers.notifications"]
 
-  admin:
-    build:
-      context: ../apps/admin
-      args:
-        NEXT_PUBLIC_API_URL: http://localhost:8080
-    ports:
-      - "3000:3000"
-    environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8080
-    depends_on:
-      api:
-        condition: service_started
+  # Admin UI is in a separate repo (../apps/admin).
+  # To run it locally: docker compose -f docker-compose.yml -f docker-compose.override.admin.yml up
+  # The service is excluded from the default compose to avoid build failures
+  # when the admin app folder is not present.
 
 volumes:
   boomboom_pgdata:
