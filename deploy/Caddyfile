@@ -1,0 +1,34 @@
+# BoomBoom API — Caddy 2 production reverse proxy.
+# Caddy auto-provisions TLS certificates from Let's Encrypt.
+#
+# BEFORE DEPLOYING TO HOSTINGER:
+#   Replace "api.boomboom.app" below with your actual domain.
+#   Ensure the domain A record points to the VPS IP.
+#   Ensure ports 80 and 443 are open in the firewall.
+#
+# Usage:
+#   docker compose -f docker-compose.prod.yml up -d
+
+api.boomboom.app {
+    # Reverse-proxy all HTTP traffic to the FastAPI container.
+    reverse_proxy api:8080
+
+    # Security hardening.
+    header {
+        # Remove server fingerprint.
+        -Server
+        # Belt-and-suspenders security headers (API also sets these).
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "no-referrer"
+        # HSTS — 1 year, include subdomains.
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    }
+
+    # Request/access logging.
+    log {
+        output stderr
+        format json
+        level INFO
+    }
+}

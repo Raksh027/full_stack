@@ -667,7 +667,10 @@
     "inappropriateHint": "Report offensive photos or bio",
     "spam": "Spam",
     "spamHint": "Promotional messages or bots",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "unmatchName": "Unmatch {{name}}",
+    "unmatchConfirm": "Unmatch with {{name}}?",
+    "unmatchMessage": "You won't be able to message each other after this."
   },
   "chat": {
     "title": "Messages",

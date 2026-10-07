@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   KeyboardAvoidingView,
   Platform,
@@ -27,6 +28,7 @@ import { profileFlagUrl } from '@/shared/utils/profileFlag';
 import { useAppSelector } from '@/store/hooks';
 import { colors, fontSize, palette } from '@/theme';
 
+import { useUnmatchMutation } from '@/features/matches/api/matchesApi';
 import {
   useGetConversationsInfiniteQuery,
   useGetMessagesInfiniteQuery,
@@ -119,6 +121,7 @@ export function ChatScreen({ navigation, route }: Props) {
   const [swipe] = useSwipeAndMatch();
   const [blockUser] = useBlockUserMutation();
   const [reportUser] = useReportUserMutation();
+  const [unmatch] = useUnmatchMutation();
   const [draft, setDraft] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
   const [safetyOpen, setSafetyOpen] = useState(false);
@@ -377,6 +380,32 @@ export function ChatScreen({ navigation, route }: Props) {
               <Icon name="flag" size={16} color={colors.danger} />
               <Text style={[styles.menuLabel, { color: colors.danger }]}>
                 {t('boom.reportName', { name })}
+              </Text>
+            </Pressable>
+            <Pressable
+              style={styles.menuRow}
+              onPress={() => {
+                setMenuOpen(false);
+                Alert.alert(
+                  t('boom.unmatchConfirm', { name }),
+                  t('boom.unmatchMessage'),
+                  [
+                    { text: t('common.cancel'), style: 'cancel' },
+                    {
+                      text: t('boom.unmatchName', { name }),
+                      style: 'destructive',
+                      onPress: () => {
+                        unmatch(conversation.matchId);
+                        navigation.goBack();
+                      },
+                    },
+                  ],
+                );
+              }}
+            >
+              <Icon name="heart-dislike-outline" size={16} color={colors.danger} />
+              <Text style={[styles.menuLabel, { color: colors.danger }]}>
+                {t('boom.unmatchName', { name })}
               </Text>
             </Pressable>
             <Pressable style={styles.cancel} onPress={() => setMenuOpen(false)}>

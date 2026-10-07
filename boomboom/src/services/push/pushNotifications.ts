@@ -1,7 +1,7 @@
 import messaging, {
   type FirebaseMessagingTypes,
 } from '@react-native-firebase/messaging';
-import { Platform } from 'react-native';
+import { Alert, Platform } from 'react-native';
 import { getLocales } from 'react-native-localize';
 
 import type { InboxNotification } from '@/features/notifications/api/notificationsApi';
@@ -84,7 +84,22 @@ function stopListeners() {
   openedUnsub = null;
 }
 
-export async function displayPushNotification(_item: InboxNotification) {}
+/**
+ * Show an in-app banner when a push notification arrives while the app is
+ * in the foreground.  Tapping "View" navigates to the relevant screen.
+ *
+ * NOTE: Replace Alert with a proper toast/snackbar library (e.g. notifee)
+ * once added to the project to get richer, non-blocking banners.
+ */
+export async function displayPushNotification(item: InboxNotification) {
+  const title = item.title || 'BoomBoom';
+  const body = item.body;
+  if (!body && !title) return;
+  Alert.alert(title, body ?? undefined, [
+    { text: 'Dismiss', style: 'cancel' },
+    { text: 'View', onPress: () => openNotification(item) },
+  ]);
+}
 
 export async function startPushNotifications(store: AppStore) {
   stopListeners();
@@ -97,8 +112,12 @@ export async function startPushNotifications(store: AppStore) {
   refreshUnsub = messaging().onTokenRefresh(token => {
     void registerToken(store, token).catch(() => undefined);
   });
-  foregroundUnsub = messaging().onMessage(() => {
+  foregroundUnsub = messaging().onMessage(async message => {
+    // Always refresh the notification badge/inbox.
     store.dispatch(baseApi.util.invalidateTags(['Notifications']));
+    // Show an in-app alert so the user sees the push while the app is open.
+    const item = remoteToInbox(message);
+    await displayPushNotification(item);
   });
   openedUnsub = messaging().onNotificationOpenedApp(message => {
     openNotification(remoteToInbox(message));

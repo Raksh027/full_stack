@@ -15,6 +15,11 @@ COPY scripts ./scripts
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir .
 
+# Run as a non-root user for security hardening.
+RUN adduser --disabled-password --no-create-home --uid 1001 appuser \
+    && chown -R appuser:appuser /app
+USER appuser
+
 EXPOSE 8080
 
 # Health check so Docker / Compose knows when the API is actually ready.
