@@ -24,6 +24,7 @@ REQUIRED = (
     "JWT_SECRET",
     "FIREBASE_CREDENTIALS_FILE",
     "FIREBASE_PROJECT_ID",
+    "GOOGLE_PLAY_SERVICE_ACCOUNT_FILE",
     "SMTP_HOST",
     "SMTP_USERNAME",
     "SMTP_PASSWORD",
@@ -59,7 +60,7 @@ PLAY_CREDENTIAL_ANY = (
     "GOOGLE_PLAY_CREDENTIALS",
 )
 
-FILE_VARS = {"FIREBASE_CREDENTIALS_FILE"}
+FILE_VARS = {"FIREBASE_CREDENTIALS_FILE", "GOOGLE_PLAY_SERVICE_ACCOUNT_FILE"}
 
 PLACEHOLDER_MARKERS = (
     "change_me",
@@ -113,6 +114,8 @@ def status_for(name: str, values: dict[str, str]) -> str:
         return "invalid"
     if name == "SUBSCRIPTION_VERIFY_MODE" and value != "live":
         return "invalid"
+    if value.startswith("/run/secrets/"):
+        return "configured"
     if name in FILE_VARS or (name in PLAY_CREDENTIAL_ANY and not value.startswith("{")):
         if not resolve_path(value).is_file():
             return "missing_file"

@@ -4,11 +4,48 @@ Run every command from `backend/` on the VPS unless a command says otherwise. Re
 
 Compose file: `backend/docker-compose.prod.yml`  
 Env template: `backend/.env.production.example`  
-TLS: `deploy/Caddyfile` (Caddy, ports 80 and 443, reverse proxy to `api:8080`)
+HTTPS termination: host Nginx (`nginx/1.24.0`) with Let's Encrypt certificates (TLS-ALPN-01 via certbot)  
+Nginx config: `deploy/nginx/api.boomboom.app.conf`  
+WebSocket map: `deploy/nginx/websocket_upgrade.conf`
 
-The API container listens on port 8080 and is not published on the host. Postgres and Redis are not published either. Public traffic enters through Caddy.
+The API container publishes port 8080 **on the loopback only** (`127.0.0.1:8080`). It is not reachable from the public internet. Postgres and Redis have no published ports. All public traffic enters through host Nginx.
 
-`docker compose` interpolates `${POSTGRES_USER}`, `${POSTGRES_PASSWORD}`, and `${FIREBASE_CREDENTIALS_FILE}` from `--env-file .env.production`. The service `env_file` does not do that interpolation. Every production Compose command below includes `--env-file .env.production`.
+Caddy is still present in the Compose file under the `caddy` profile for rollback. It does not start unless you explicitly pass `--profile caddy`.
+
+`docker compose` interpolates `${POSTGRES_USER}`, `${POSTGRES_PASSWORD}`, `${FIREBASE_CREDENTIALS_FILE}`, and `${GOOGLE_PLAY_SERVICE_ACCOUNT_FILE}` from `--env-file .env.production`. Every production Compose command below includes `--env-file .env.production`.
+
+## Architecture overview
+
+```
+Internet
+  │
+  ▼
+AWS Global Accelerator (anycast 3.33.165.172, 15.197.228.149)
+  │  GA:443 ─── TCP passthrough ──► VPS:443
+  │  GA:80  ─── port override ────► VPS:443   (port 80 is NOT forwarded to VPS:80)
+  ▼
+Hostinger VPS  (public IP)
+  ├─ host Nginx (port 443)  ← certbot TLS cert  api.boomboom.app
+  │     └─ proxy_pass http://127.0.0.1:8080
+  │                       │
+  │                       ▼
+  │               Docker (loopback only)
+  │               ┌────────────────────────────────┐
+  │               │  api container  (port 8080)     │
+  │               │  worker container               │
+  │               │  postgres container             │
+  │               │  redis container                │
+  │               └────────────────────────────────┘
+  └─ host Nginx (port 80 + port 443)  api.weprettify.com  (unchanged)
+```
+
+### Why GA:80 → VPS:443 matters
+
+The AWS Global Accelerator port override maps GA port 80 to VPS port 443. Port 80 never reaches the VPS. HTTP-01 ACME challenges therefore fail. **TLS-ALPN-01** is the only working method — certbot binds port 443 directly for ~60 seconds while Nginx is stopped, completes the challenge, then Nginx resumes.
+
+During automatic renewal (every ~60 days in practice), certbot pre/post hooks stop and restart Nginx for the ~30 seconds the challenge takes. This is the only planned downtime.
+
+---
 
 ## Required environment variables
 
@@ -35,7 +72,8 @@ The validator prints variable names and a status (`configured`, `missing`, `plac
 | `SMTP_FROM_EMAIL` | From address for OTP mail. |
 | `SUBSCRIPTION_VERIFY_MODE` | Must be `live`. Compose also sets this. |
 | `GOOGLE_PLAY_PACKAGE_NAME` | Android application id. |
-| `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` or `GOOGLE_PLAY_SERVICE_ACCOUNT` or `GOOGLE_PLAY_CREDENTIALS` | One Play service-account source. |
+| `GOOGLE_PLAY_SERVICE_ACCOUNT_FILE` | Host path mounted read-only into the API container. |
+| `GOOGLE_PLAY_SERVICE_ACCOUNT` | Container path. Compose sets `/run/secrets/google-play-service-account.json`. |
 | `GOOGLE_PLAY_WEBHOOK_SECRET` | Shared secret checked on Play RTDN posts. |
 | `GOOGLE_PUBSUB_PROJECT` | GCP project for Play RTDN. |
 | `GOOGLE_PUBSUB_TOPIC` | Pub/Sub topic name. |
@@ -60,6 +98,8 @@ The validator prints variable names and a status (`configured`, `missing`, `plac
 `DATABASE_URL` and `REDIS_URL` in the template are replaced inside the `api` and `worker` services by Compose (`postgres:5432` / `redis:6379`). Generate the database password once and put it only in `POSTGRES_PASSWORD`.
 
 `APPLE_IAP_WEBHOOK_SECRET` is optional. Live Apple notifications are verified with JWS.
+
+---
 
 ## Generated on the VPS
 
@@ -90,6 +130,8 @@ Use the hex password only. Characters such as `@`, `:`, `/`, `+`, and `=` break 
 
 `POSTGRES_USER` can stay `boomboom_prod` (public name, not a secret).
 
+---
+
 ## Firebase
 
 From Firebase console → Project settings → Service accounts → Generate new private key.
@@ -101,6 +143,8 @@ On the VPS:
 
 Compose sets `FIREBASE_CREDENTIALS_JSON=/run/secrets/firebase-admin.json` and mounts the host file there read-only. The API process runs as uid 1001, so the host file must be readable by uid 1001.
 
+---
+
 ## Razorpay
 
 From the Razorpay dashboard (live mode):
@@ -111,18 +155,23 @@ From the Razorpay dashboard (live mode):
 
 The key id is returned to the app by the order API. The key secret and webhook secret stay on the server.
 
+---
+
 ## Google Play
 
 From Google Play Console and Google Cloud:
 
 - `GOOGLE_PLAY_PACKAGE_NAME` — `com.boomboomapp.date` unless the application id changes
-- One of `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`, `GOOGLE_PLAY_SERVICE_ACCOUNT`, or `GOOGLE_PLAY_CREDENTIALS`
+- `GOOGLE_PLAY_SERVICE_ACCOUNT_FILE` — host path `/etc/boomboom/google-play-service-account.json`
+- `GOOGLE_PLAY_SERVICE_ACCOUNT` — container path `/run/secrets/google-play-service-account.json`
 - `GOOGLE_PLAY_WEBHOOK_SECRET`
 - `GOOGLE_PUBSUB_PROJECT`
 - `GOOGLE_PUBSUB_TOPIC`
 - `GOOGLE_PUBSUB_SUBSCRIPTION`
 
-Compose does not mount a Play JSON file. Put the service-account JSON in `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` on the VPS (single line), or set `GOOGLE_PLAY_SERVICE_ACCOUNT` to a path that exists inside the `api` and `worker` containers. A path that exists only on the host is invisible to the app.
+Compose mounts `GOOGLE_PLAY_SERVICE_ACCOUNT_FILE` read-only on the `api` service only. `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` and `GOOGLE_PLAY_CREDENTIALS` stay optional fallbacks. The notification worker does not read Play credentials.
+
+---
 
 ## Apple
 
@@ -140,6 +189,8 @@ From the Apple developer account:
 
 Keep the `.p8` file on the VPS only if you need it outside the env file. Do not commit it.
 
+---
+
 ## SMTP
 
 OTP email is sent only when both `SMTP_USERNAME` and `SMTP_PASSWORD` are set. In production the API does not fall back to a mock OTP.
@@ -151,15 +202,19 @@ OTP email is sent only when both `SMTP_USERNAME` and `SMTP_PASSWORD` are set. In
 - `SMTP_FROM_EMAIL`
 - `SMTP_FROM_NAME` — `BoomBoom`
 
+---
+
 ## OAuth providers
 
 - `GOOGLE_WEB_CLIENT_ID` and `GOOGLE_IOS_CLIENT_ID` — Google Cloud OAuth client ids used to verify Google ID tokens
 - `FACEBOOK_APP_ID` and `FACEBOOK_APP_SECRET` — Meta app settings
 - `APPLE_BUNDLE_ID` — Sign in with Apple audience
 
+---
+
 ## Public configuration
 
-These are not secrets. They still must match the real domain before go-live. `deploy/Caddyfile` currently uses `api.boomboom.app`.
+These are not secrets. They still must match the real domain before go-live.
 
 - `APP_NAME`, `APP_HOST`, `APP_PORT`
 - `JWT_ALGORITHM` — `HS256`
@@ -178,7 +233,9 @@ These are not secrets. They still must match the real domain before go-live. `de
 - `SUBSCRIPTION_VERIFY_MODE=live`
 - Redis URL inside the stack: `redis://redis:6379/0`
 
-Replace every `your-domain.com` value, including `CORS_ORIGINS`, `PUBLIC_APP_ORIGIN`, and `MEDIA_PUBLIC_BASE_URL`. Point the domain A record at the VPS and open TCP 80 and 443 before the first Caddy start so Let's Encrypt can issue a certificate.
+Replace every `your-domain.com` value, including `CORS_ORIGINS`, `PUBLIC_APP_ORIGIN`, and `MEDIA_PUBLIC_BASE_URL`.
+
+---
 
 ## File permissions
 
@@ -198,7 +255,13 @@ chown 1001:1001 /etc/boomboom/firebase-admin.json
 chmod 600 /etc/boomboom/firebase-admin.json
 ```
 
-Set `FIREBASE_CREDENTIALS_FILE=/etc/boomboom/firebase-admin.json`.
+Google Play service account JSON (same directory, same ownership):
+
+```bash
+install -m 600 /path/to/google-play-service-account.json /etc/boomboom/google-play-service-account.json
+chown 1001:1001 /etc/boomboom/google-play-service-account.json
+chmod 600 /etc/boomboom/google-play-service-account.json
+```
 
 After the media volume exists, give the same user ownership so uploads can be written:
 
@@ -209,17 +272,123 @@ docker run --rm -v backend_boomboom_prod_media:/data alpine chown -R 1001:1001 /
 
 If `docker volume ls` shows a different volume name, use that name instead of `backend_boomboom_prod_media`.
 
+---
+
+## HTTPS: certbot + host Nginx
+
+### One-time certificate acquisition
+
+> Prerequisite: DNS for `api.boomboom.app` must resolve through Global Accelerator so GA:443 reaches this VPS. Stop Caddy first so certbot can bind port 443.
+
+```bash
+# 1. Stop Caddy (if it was ever started).
+#    If it was never started this is a no-op.
+docker compose --env-file .env.production -f docker-compose.prod.yml \
+  --profile caddy stop proxy
+
+# 2. Stop host Nginx so port 443 is free for the standalone certbot challenge.
+systemctl stop nginx
+
+# 3. Obtain certificate — TLS-ALPN-01, standalone mode (certbot binds :443 itself).
+certbot certonly \
+  --standalone \
+  --preferred-challenges tls-alpn-01 \
+  -d api.boomboom.app \
+  --agree-tos \
+  -m admin@boomboom.app
+
+# 4. Verify the cert was issued.
+ls -la /etc/letsencrypt/live/api.boomboom.app/
+
+# 5. Restart Nginx.
+systemctl start nginx
+```
+
+Certbot places the cert at:
+
+```
+/etc/letsencrypt/live/api.boomboom.app/fullchain.pem
+/etc/letsencrypt/live/api.boomboom.app/privkey.pem
+```
+
+These paths are already referenced in `deploy/nginx/api.boomboom.app.conf`.
+
+### Install Nginx config files
+
+From the repo root on the VPS:
+
+```bash
+# WebSocket connection-upgrade map (shared; loaded once by Nginx).
+cp deploy/nginx/websocket_upgrade.conf /etc/nginx/conf.d/websocket_upgrade.conf
+
+# Virtual-host config for api.boomboom.app.
+cp deploy/nginx/api.boomboom.app.conf /etc/nginx/sites-available/api.boomboom.app
+ln -sf /etc/nginx/sites-available/api.boomboom.app \
+       /etc/nginx/sites-enabled/api.boomboom.app
+
+# Test and reload.
+nginx -t && systemctl reload nginx
+```
+
+Confirm the existing `api.weprettify.com` site is still enabled and reload did not remove it:
+
+```bash
+nginx -T | grep server_name
+```
+
+### Certbot automatic renewal
+
+Let's Encrypt certs expire after 90 days. Certbot installs a systemd timer that runs twice daily and renews when fewer than 30 days remain. Because TLS-ALPN-01 requires certbot to bind port 443, Nginx must be stopped for the ~30 seconds the challenge takes.
+
+Configure pre/post hooks:
+
+```bash
+# Pre-hook: stop Nginx before renewal.
+cat > /etc/letsencrypt/renewal-hooks/pre/stop-nginx.sh << 'EOF'
+#!/bin/sh
+systemctl stop nginx
+EOF
+chmod +x /etc/letsencrypt/renewal-hooks/pre/stop-nginx.sh
+
+# Post-hook: restart Nginx after renewal.
+cat > /etc/letsencrypt/renewal-hooks/post/start-nginx.sh << 'EOF'
+#!/bin/sh
+systemctl start nginx
+EOF
+chmod +x /etc/letsencrypt/renewal-hooks/post/start-nginx.sh
+```
+
+Dry-run test to confirm the hooks work:
+
+```bash
+certbot renew --dry-run
+```
+
+Expected output: `Congratulations, all simulated renewals succeeded`.
+
+---
+
 ## Docker Compose
 
 From `backend/`:
 
 ```bash
+# Validate the rendered Compose (check Firebase/Play mount source paths, no public DB ports).
 docker compose --env-file .env.production -f docker-compose.prod.yml config
+
+# First start.
 docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+
+# Status.
 docker compose --env-file .env.production -f docker-compose.prod.yml ps
 ```
 
-`config` renders the Compose file. Confirm the Firebase mount source is the host path you set, and confirm Postgres and Redis have no `ports:` entries. Do not paste the rendered file into chat or tickets; it contains the database password.
+`config` renders the Compose file. Confirm:
+- `api.ports` shows `host_ip: 127.0.0.1` (loopback-only — not publicly reachable)
+- Firebase and Play credential mounts point at your `/etc/boomboom/` host paths
+- `postgres` and `redis` have no `ports:` entries
+
+Do not paste the rendered file into chat or tickets; it contains the database password.
 
 Rolling update of the application containers:
 
@@ -228,31 +397,80 @@ git pull
 docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build api worker
 ```
 
-The stack services are `postgres`, `redis`, `api`, `worker`, and `proxy` (Caddy).
+The default stack services are `postgres`, `redis`, `api`, and `worker`. Caddy (`proxy`) is excluded from the default profile; see *Caddy rollback* below.
+
+---
 
 ## Migrations
 
-The `api` command runs `python -m alembic upgrade head` before Uvicorn, and retries for about 90 seconds. To run migrations yourself:
+The `api` command runs `python -m alembic upgrade head` before Uvicorn, and retries for about 90 seconds. To run migrations manually:
 
 ```bash
 docker compose --env-file .env.production -f docker-compose.prod.yml exec api python -m alembic upgrade head
 docker compose --env-file .env.production -f docker-compose.prod.yml exec api python -m alembic current
 ```
 
+---
+
 ## Health checks
 
-Inside the API container:
+Inside the API container (always works, bypasses TLS):
 
 ```bash
-docker compose --env-file .env.production -f docker-compose.prod.yml exec api curl -fsS http://127.0.0.1:8080/health
-docker compose --env-file .env.production -f docker-compose.prod.yml exec api curl -fsS http://127.0.0.1:8080/ready
+docker compose --env-file .env.production -f docker-compose.prod.yml exec api \
+  curl -fsS http://127.0.0.1:8080/health
+docker compose --env-file .env.production -f docker-compose.prod.yml exec api \
+  curl -fsS http://127.0.0.1:8080/ready
+```
+
+From the VPS loopback (confirms Docker→host port binding works):
+
+```bash
+curl -fsS http://127.0.0.1:8080/health
+curl -fsS http://127.0.0.1:8080/ready
+```
+
+Through Nginx and Global Accelerator (full path):
+
+```bash
+curl -4sSI https://api.boomboom.app/health
+curl -4fsS https://api.boomboom.app/health
+curl -4fsS https://api.boomboom.app/ready
 ```
 
 `/health` is liveness. `/ready` returns HTTP 200 only when Postgres and Redis both answer.
 
-Through Caddy, after DNS and certificates are in place (replace the host if `deploy/Caddyfile` uses a different name):
+Confirm `api.weprettify.com` still works after reload:
 
 ```bash
-curl -fsS https://api.boomboom.app/health
-curl -fsS https://api.boomboom.app/ready
+curl -4fsS https://api.weprettify.com/health
+```
+
+---
+
+## Caddy rollback
+
+Caddy volumes (`boomboom_caddy_data`, `boomboom_caddy_config`) are preserved. To restart Caddy (e.g. for rollback testing) and disable Nginx termination for `api.boomboom.app`:
+
+```bash
+# 1. Remove the Nginx site symlink and reload.
+rm /etc/nginx/sites-enabled/api.boomboom.app
+nginx -t && systemctl reload nginx
+
+# 2. Start Caddy. It will publish port 443 and obtain/renew its own cert.
+docker compose --env-file .env.production -f docker-compose.prod.yml \
+  --profile caddy up -d proxy
+```
+
+To re-enable Nginx after testing:
+
+```bash
+# 1. Stop Caddy.
+docker compose --env-file .env.production -f docker-compose.prod.yml \
+  --profile caddy stop proxy
+
+# 2. Re-enable Nginx site and reload.
+ln -sf /etc/nginx/sites-available/api.boomboom.app \
+       /etc/nginx/sites-enabled/api.boomboom.app
+nginx -t && systemctl reload nginx
 ```

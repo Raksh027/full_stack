@@ -1,6 +1,7 @@
 # Production Docker Compose — Hostinger VPS deployment.
 # Postgres and Redis are NOT published to the host (no port binding).
-# HTTPS is handled by Caddy (auto-TLS via Let's Encrypt).
+# HTTPS is terminated by host Nginx (nginx/1.24.0) via certbot (TLS-ALPN-01).
+# The api service is published ONLY on 127.0.0.1:8080 (loopback — not public).
 # All secrets come from .env.production (never committed to git).
 #
 # First deploy (run from backend/):
@@ -62,8 +63,10 @@ services:
       GOOGLE_PLAY_SERVICE_ACCOUNT: /run/secrets/google-play-service-account.json
       # Increase workers for production (1 per CPU core, max 8).
       WEB_CONCURRENCY: "4"
-    expose:
-      - "8080"
+    # The port below publishes the API on the host loopback ONLY.
+    # Host Nginx proxies to this. It is NOT accessible from the public internet.
+    ports:
+      - "127.0.0.1:8080:8080"
     volumes:
       - boomboom_prod_media:/app/storage/uploads
       - "${FIREBASE_CREDENTIALS_FILE}:/run/secrets/firebase-admin.json:ro"
@@ -116,6 +119,11 @@ services:
     command: ["python", "-m", "app.workers.notifications"]
 
   proxy:
+    # Caddy is disabled by default. HTTPS is now handled by host Nginx + certbot.
+    # To run Caddy (e.g. for rollback testing):
+    #   docker compose --env-file .env.production -f docker-compose.prod.yml --profile caddy up -d proxy
+    # The boomboom_caddy_data and boomboom_caddy_config volumes are preserved.
+    profiles: ["caddy"]
     image: caddy:2-alpine
     ports:
       - "443:443"
