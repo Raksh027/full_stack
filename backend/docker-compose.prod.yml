@@ -118,8 +118,10 @@ services:
   proxy:
     image: caddy:2-alpine
     ports:
-      - "80:80"
       - "443:443"
+      # Port 80 is intentionally NOT published here.
+      # The host Nginx (serving api.weprettify.com) already holds port 80.
+      # Caddy handles TLS-ALPN-01 challenges on port 443 — no port 80 needed.
     volumes:
       - ../deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - boomboom_caddy_data:/data
