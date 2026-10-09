@@ -21,6 +21,10 @@ from app.services.mobile import MobileService
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
+# Routes on dev_router are registered only when APP_ENV != production.
+# See app.api.v1.router.create_api_router for the conditional include.
+dev_router = APIRouter(prefix="/auth", tags=["Authentication"])
+
 
 @router.post("/register")
 async def register(
@@ -93,7 +97,7 @@ async def resend_otp(
     return success(request, data)
 
 
-@router.get("/dev/otp")
+@dev_router.get("/dev/otp")
 async def dev_otp(
     request: Request,
     auth: Annotated[AuthService, Depends(get_auth_service)],
